@@ -15,7 +15,11 @@ import (
 func ReadResource(aws_config aws.Config, resource_type string, id string) (any, error) {
 	conns.SetResourceBinderAWSConfig(aws_config)
 
-	resource := resources[resource_type]()
+	resourceFunc, ok := resources[resource_type]
+	if !ok {
+		return nil, fmt.Errorf("resource type %s not found", resource_type)
+	}
+	resource := resourceFunc()
 	data := resource.Data(nil)
 	data.SetId(id)
 
