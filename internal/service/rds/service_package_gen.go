@@ -5,6 +5,7 @@ package rds
 import (
 	"context"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/hashicorp/terraform-provider-aws/internal/conns"
 	"github.com/hashicorp/terraform-provider-aws/internal/types"
@@ -323,11 +324,11 @@ func (p *servicePackage) ServicePackageName() string {
 
 // NewClient returns a new AWS SDK for Go v2 client for this service package's AWS API.
 func (p *servicePackage) NewClient(ctx context.Context, config map[string]any) (*rds.Client, error) {
-	cfg := *conns.ResourceBinderAWSConfig() // *(config["aws_sdkv2_config"].(*aws.Config))
+	cfg := *(config["aws_sdkv2_config"].(*aws.Config))
 	optFns := []func(*rds.Options){
 		rds.WithEndpointResolverV2(newEndpointResolverV2()),
 		withBaseEndpoint(config[names.AttrEndpoint].(string)),
-		// withExtraOptions(ctx, p, config),
+		withExtraOptions(ctx, p, config),
 	}
 
 	return rds.NewFromConfig(cfg, optFns...), nil

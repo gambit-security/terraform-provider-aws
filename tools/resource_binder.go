@@ -3,35 +3,82 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	arnaws "github.com/aws/aws-sdk-go-v2/aws/arn"
 
 	"github.com/hashicorp/go-cty/cty"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/hashicorp/terraform-provider-aws/internal/conns"
 	"github.com/hashicorp/terraform-provider-aws/internal/provider"
 )
 
-func ReadResource(aws_config aws.Config, resource_type string, id string) (any, error) {
-	conns.SetResourceBinderAWSConfig(aws_config)
-
-	resourceFunc, ok := resources[resource_type]
-	if !ok {
-		return nil, fmt.Errorf("resource type %s not found", resource_type)
-	}
-	resource := resourceFunc()
-	data := resource.Data(nil)
-	data.SetId(id)
-
+func ReadResource(awsConfig aws.Config, resource_type string, arn string) (any, error) {
 	ctx := context.Background()
+
+	creds, err := awsConfig.Credentials.Retrieve(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve credentials: %w", err)
+	}
+
+	rawData := map[string]interface{}{
+		"region":     awsConfig.Region,
+		"access_key": creds.AccessKeyID,
+		"secret_key": creds.SecretAccessKey,
+	}
+
+	// SessionToken is optional, only needed for assumed role or temporary credentials
+	if creds.SessionToken != "" {
+		rawData["token"] = creds.SessionToken
+	}
+
+	providerConfig := terraform.NewResourceConfigRaw(rawData)
 
 	p, err := provider.New(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// Call ConfigureContextFunc to initialize the provider
+	diags := p.Configure(ctx, providerConfig)
+	if diags.HasError() {
+		return nil, fmt.Errorf("provider configuration failed: %w", diags)
+	}
+
+	resource, ok := p.ResourcesMap[resource_type]
+	if !ok {
+		return nil, fmt.Errorf("resource type %s unsupported", resource_type)
+	}
+
+	data := resource.Data(nil)
+
+	// Normalize arn to id
+	var id string
+	if strings.HasPrefix(arn, "arn:") {
+		arnObject, err := arnaws.Parse(arn)
+		if err != nil {
+			return nil, err
+		}
+		id = arnObject.Resource
+		if strings.Contains(arn, "/") {
+			id = strings.Split(arn, "/")[1] // Remove the first part of the ARN (e.g., "aws:iam::123456789012:role/ExampleRole" -> "ExampleRole")
+		}
+	}
+
+	data.SetId(id)
+
 	meta := p.Meta().(*conns.AWSClient)
 
-	resource.ReadWithoutTimeout(ctx, data, meta)
+	if data == nil && meta == nil {
+		return nil, fmt.Errorf("failed to read resource: data or meta is nil")
+	}
+
+	diags = resource.ReadWithoutTimeout(ctx, data, meta)
+	if diags.HasError() {
+		return nil, fmt.Errorf("failed to read resource %s with ID %s: %v", resource_type, arn, diags)
+	}
 
 	attr_value, err := data.State().AttrsAsObjectValue(resource.CoreConfigSchema().ImpliedType())
 	if err != nil {
