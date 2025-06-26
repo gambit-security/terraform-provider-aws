@@ -65,6 +65,9 @@ func ReadResource(awsConfig aws.Config, resource_type string, arn string) (any, 
 		if strings.Contains(arn, "/") {
 			id = strings.Split(arn, "/")[1] // Remove the first part of the ARN (e.g., "aws:iam::123456789012:role/ExampleRole" -> "ExampleRole")
 		}
+	} else {
+		// If arn is not in ARN format, assume it's just the ID
+		id = arn
 	}
 
 	data.SetId(id)
