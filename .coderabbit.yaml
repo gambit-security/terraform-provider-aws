@@ -1,0 +1,6 @@
+language: en-US
+reviews:
+  path_instructions:
+    - path: ".github/workflows/**"
+      instructions: |
+        All GitHub Actions must be pinned to full commit SHAs for supply chain security. Flag any action reference using a tag (e.g. @v4) or branch instead of a commit SHA. The only exception is references to gambit-security/shared-workflows, which may use branch/tag references.
